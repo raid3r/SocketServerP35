@@ -1,6 +1,8 @@
 ﻿using ChatModels.Models;
+using ChatModels;
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
 
 Console.InputEncoding = System.Text.Encoding.UTF8;
 Console.OutputEncoding = System.Text.Encoding.UTF8;
@@ -14,7 +16,13 @@ int port = 5000;
 
 Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 
-var messageBoxes = new List<ChatMessageBox>();
+var messageBoxes = LoadData();
+
+var uploadDir = "UploadedFiles";
+if (!Directory.Exists(uploadDir))
+{
+    Directory.CreateDirectory(uploadDir);
+}
 
 
 // Чат Клієнт - Сервер
@@ -51,14 +59,14 @@ void HandleClient(Socket clientSocket)
     // Протокол взаємодії
 
     // Клієнт передає своє ім'я 
-    string userName = ReceiveString(clientSocket);
+    string userName = SocketHelper.ReceiveString(clientSocket);
     // Сервер відповідає привітанням
-    SendString(clientSocket, "OK");
+    SocketHelper.SendString(clientSocket, "OK");
 
     Console.WriteLine($"User: {userName}");
 
     // Отримати пароль від користувача
-    string password = ReceiveString(clientSocket);
+    string password = SocketHelper.ReceiveString(clientSocket);
 
     // Перевірка паролю
     bool validPassword = false;
@@ -77,6 +85,7 @@ void HandleClient(Socket clientSocket)
                 User = new ChatUser { Username = userName },
                 Password = password
             });
+            SaveData(messageBoxes);
         }
     }
 
@@ -84,17 +93,17 @@ void HandleClient(Socket clientSocket)
     {
         Console.WriteLine("Invalid password");
         // Пароль невірний
-        SendString(clientSocket, "FAIL");
+        SocketHelper.SendString(clientSocket, "FAIL");
         clientSocket.Shutdown(SocketShutdown.Both);
         clientSocket.Close();
         return;
     }
 
-    SendString(clientSocket, "OK");
+    SocketHelper.SendString(clientSocket, "OK");
 
 
     // Клієнт передає запит "GET_MESSAGES" / "SEND_MESSAGE"
-    string command = ReceiveString(clientSocket);
+    string command = SocketHelper.ReceiveString(clientSocket);
 
     Console.WriteLine($"Command: {command}");
 
@@ -115,19 +124,24 @@ void HandleClient(Socket clientSocket)
                 // Відправити всі повідомлення зі скриньки - серіалізувати в json рядок
                 messagesJson = System.Text.Json.JsonSerializer.Serialize(messageBox.Messages);
                 // Очистити скриньку
-                messageBox.Messages.Clear();
+                if (messageBox.Messages.Count > 0)
+                {
+                    Console.WriteLine($"Sent {messageBox.Messages.Count} messages to {userName}");
+                    messageBox.Messages.Clear();
+                    SaveData(messageBoxes);
+                }
             }
             // Відправити всі повідомлення
             Console.WriteLine(messagesJson);
-            SendString(clientSocket, messagesJson);
+            SocketHelper.SendString(clientSocket, messagesJson);
             break;
 
         // 2. надіслати повідомлення "SEND_MESSAGE"
         case "SEND_MESSAGE":
 
-            SendString(clientSocket, "OK");
+            SocketHelper.SendString(clientSocket, "OK");
             // Отримати повідомлення
-            var messageJson = ReceiveString(clientSocket);
+            var messageJson = SocketHelper.ReceiveString(clientSocket);
             Console.WriteLine("New message");
             Console.WriteLine(messageJson);
             // десеріалізувати з json рядка
@@ -144,12 +158,33 @@ void HandleClient(Socket clientSocket)
                             box.Messages.Add(message);
                         }
                     }
+                    SaveData(messageBoxes);
                 }
             }
             // Сервер відповідає OK
             Console.WriteLine("Message added to boxes");
-            SendString(clientSocket, "OK");
+            //SocketHelper.SendString(clientSocket, "OK");
             break;
+
+        // 3. Завантажити файл з клієнта на сервер
+        case "UPLOAD_FILE":
+            SocketHelper.SendString(clientSocket, "FILENAME");
+            // Отримати файл
+            var fileName = SocketHelper.ReceiveString(clientSocket);
+            Console.WriteLine($"File to upload: {fileName}");
+            var userDir = Path.Combine(uploadDir, userName);
+            if (!Directory.Exists(userDir))
+            {
+                Directory.CreateDirectory(userDir);
+            }
+            //SocketHelper.ReceiveFile(clientSocket, Path.Combine(userDir, fileName));
+
+            break;
+
+        // 4. Завантажити файл з сервера на клієнт
+        case "DOWNLOAD_FILE":
+            break;
+
 
         default:
             break;
@@ -160,43 +195,31 @@ void HandleClient(Socket clientSocket)
     clientSocket.Close();
 }
 
-
-void SendString(Socket socket, string message)
+void SaveData(List<ChatMessageBox> messageBoxesToSave)
 {
-    byte[] data = System.Text.Encoding.UTF8.GetBytes(message);
-    socket.Send(data);
+    var fileName = "messageboxes.json";
+    var json = JsonSerializer.Serialize(messageBoxesToSave);
+    File.WriteAllText(fileName, json);
 }
 
-string ReceiveString(Socket socket)
+List<ChatMessageBox> LoadData()
 {
-    byte[] buffer = new byte[2048];
-    int bytesRead = socket.Receive(buffer);
-    string receivedMessage = System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
-    return receivedMessage;
+    var fileName = "messageboxes.json";
+    List<ChatMessageBox> loadedMessageBoxes = [];
+    if (File.Exists(fileName))
+    {
+        var json = File.ReadAllText(fileName);
+        loadedMessageBoxes = System.Text.Json.JsonSerializer.Deserialize<List<ChatMessageBox>>(json) ?? [];
+    }
+    return loadedMessageBoxes;
 }
 
-
-// 1 - 65535
 
 /*
- 21 - FTP
- 22 - SSH
- 23 - Telnet
- 25 - SMTP
- 80 - HTTP
- 110 - POP3
- 143 - IMAP
- 443 - HTTPS
- 3306 - MySQL
- 5432 - PostgreSQL
- 6379 - Redis
- 27017 - MongoDB
- 5000 - Наш сервер
-  
- */
-
-
-
-// 
-
-
+ * Зробити щоб дані на сервері про юзерів та їхні скриньки зберігалися в файл
+ * шоб не втрачалися при перезапуску сервера
+ * 
+ * 
+ * 
+ * 
+ */ 
