@@ -4,6 +4,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
 
+
+// Встановіть собі цей проєкт та запустіть його
+
 Console.InputEncoding = System.Text.Encoding.UTF8;
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
@@ -177,12 +180,35 @@ void HandleClient(Socket clientSocket)
             {
                 Directory.CreateDirectory(userDir);
             }
-            //SocketHelper.ReceiveFile(clientSocket, Path.Combine(userDir, fileName));
+            
+            //SocketHelper.SendString(clientSocket, "OK");
 
+            SocketHelper.ReceiveFile(clientSocket, Path.Combine(userDir, fileName));
             break;
 
         // 4. Завантажити файл з сервера на клієнт
         case "DOWNLOAD_FILE":
+            SocketHelper.SendString(clientSocket, "FROM");
+            var fromUser = SocketHelper.ReceiveString(clientSocket);
+            SocketHelper.SendString(clientSocket, "FILENAME");
+            var downloadFilename = SocketHelper.ReceiveString(clientSocket);
+            
+            var downloadFilePath = Path.Combine(uploadDir, fromUser, downloadFilename);
+            if (File.Exists(downloadFilePath))
+            {
+                Console.WriteLine($"File to download: {downloadFilename}");
+                SocketHelper.SendString(clientSocket, "EXISTS");
+                var response = SocketHelper.ReceiveString(clientSocket);
+                if (response == "OK")
+                {
+                    SocketHelper.SendFile(clientSocket, downloadFilePath);
+                    Console.WriteLine("File sent");
+                }
+            }
+            else
+            {
+                SocketHelper.SendString(clientSocket, "NOFILE");
+            }
             break;
 
 
