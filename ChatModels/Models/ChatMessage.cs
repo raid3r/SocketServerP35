@@ -10,5 +10,6 @@ public class ChatMessage
 {
     public ChatUser From { get; set; }
     public DateTime Timestamp { get; set; }
-    public string Text { get; set; }    
+    public string Text { get; set; }
+    public string? Filename { get; set; }
 }
